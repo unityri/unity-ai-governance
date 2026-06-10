@@ -38,6 +38,9 @@ import EditConnection from "views/connections/edit";
 import RiskAssessmentMethod from "views/ram";
 import ComplianceBuilder from "views/CompilanceBuilders";
 import ResilienceIndex from "views/resilienceIndex";
+import AIGovernanceDSS from "views/aiGovernanceDss";
+import AIGovernanceOverview from "views/aiGovernanceDss/Overview";
+import IntakeForm from "views/aiGovernanceDss/IntakeForm";
 import CVELookupTool from "views/cveLookupTool";
 // import ComplianceLookupTool from "views/complianceLookupTool";
 
@@ -324,6 +327,40 @@ const routes = [
         permissionId: helpdeskTicketPermissionId
       }
     ]
+  },
+  {
+    collapse: true,
+    name: "AI Governance",
+    mini: "AG",
+    state: "AIGovernanceCollapse",
+    icon: "",
+    imgIcon: governanceIcon,
+    views: [
+      {
+        path: "/ai-governance-intake",
+        name: "Intake",
+        mini: "IN",
+        layout: "/admin",
+        customClass: "",
+        component: (<IntakeForm />),
+      },
+      {
+        path: "/ai-governance-overview",
+        name: "Overview",
+        mini: "OV",
+        layout: "/admin",
+        customClass: "",
+        component: (<AIGovernanceOverview />),
+      },
+      {
+        path: "/ai-governance-dss",
+        name: "DSS Detail",
+        mini: "DS",
+        layout: "/admin",
+        customClass: "",
+        component: (<AIGovernanceDSS />),
+      },
+    ],
   },
   {
     collapse: true,

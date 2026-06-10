@@ -1,5 +1,15 @@
 setup.sh
 
+# Credentials and secrets
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env
+
+# Database dumps
+dump/
+
 #ignore node modules
 frontend/.vscode
 frontend/.eslintcache
@@ -17,3 +27,6 @@ backend/*-lock.json
 # cache
 frontend/.cache
 backend/.cache
+
+# OS
+.DS_Store

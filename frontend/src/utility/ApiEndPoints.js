@@ -224,5 +224,17 @@ export const API_ENDPOINTS = {
   },
   aiPrompts: {
     writeDescription: `/ai-description-write`,
+  },
+  dss: {
+    block0Submit: `/dss/block0/submit`,
+    block0Extract: `/dss/block0/extract`,
+    block1Run: `/dss/block1/run`,
+    block1Narrate: `/dss/block1/narrate`,
+    block2Run: `/dss/block2/run`,
+    block2Narrate: `/dss/block2/narrate`,
+    block3Run: `/dss/block3/run`,
+    block3Narrate: `/dss/block3/narrate`,
+    block4Run: `/dss/block4/run`,
+    block4Narrate: `/dss/block4/narrate`,
   }
 }

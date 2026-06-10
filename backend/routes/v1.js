@@ -41,6 +41,11 @@ var NetswitchThreatIntelStatsController = require("../controllers/netswitchThrea
 var CompliancePriorityController = require("../controllers/compliancePriorities.controller");
 var ContactController = require("../controllers/contacts.controller");
 var AIPromptController = require("../controllers/aiPrompts.controller");
+var DSSBlock0Controller = require("../controllers/dssBlock0.controller");
+var DSSBlock1Controller = require("../controllers/dssBlock1.controller");
+var DSSBlock2Controller = require("../controllers/dssBlock2.controller");
+var DSSBlock3Controller = require("../controllers/dssBlock3.controller");
+var DSSBlock4Controller = require("../controllers/dssBlock4.controller");
 
 // ** Auth
 router.post("/users/login", UserController.loginUser);
@@ -345,6 +350,18 @@ router.post("/company-compliance-priorities", Authorization, CompliancePriorityC
 
 // ** AI Prompts
 router.post("/ai-description-write", Authorization, AIPromptController.writeAiDescription);
+
+// ** AI Governance DSS
+router.post("/dss/block0/submit", Authorization, DSSBlock0Controller.submitBlock0);
+router.post("/dss/block0/extract", Authorization, DSSBlock0Controller.extractBlock0);
+router.post("/dss/block1/run", Authorization, DSSBlock1Controller.runBlock1);
+router.post("/dss/block1/narrate", Authorization, DSSBlock1Controller.narrateBlock1);
+router.post("/dss/block2/run", Authorization, DSSBlock2Controller.runBlock2);
+router.post("/dss/block2/narrate", Authorization, DSSBlock2Controller.narrateBlock2);
+router.post("/dss/block3/run", Authorization, DSSBlock3Controller.runBlock3);
+router.post("/dss/block3/narrate", Authorization, DSSBlock3Controller.narrateBlock3);
+router.post("/dss/block4/run", Authorization, DSSBlock4Controller.runBlock4);
+router.post("/dss/block4/narrate", Authorization, DSSBlock4Controller.narrateBlock4);
 
 router.post("/tool-solution-contact", Authorization, ContactController.toolSolutionContact);
 
