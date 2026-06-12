@@ -1,9 +1,10 @@
-const fs = require("fs");
-const path = require("path");
-const { spawn } = require("child_process");
+"use strict";
 const OllamaPromptService = require("../services/ollamaPrompt.service");
 
-const defaultPrototypeDir = path.resolve(__dirname, "../../../dss-prototype/prototype");
+// DSS engine runs as a sealed HTTP service.
+function resolveDssServiceUrl() {
+  return (process.env.DSS_SERVICE_URL || "http://127.0.0.1:5001").replace(/\/$/, "");
+}
 
 const artifactScopes = {
   aup: {
@@ -45,59 +46,6 @@ const artifactScopes = {
   },
 };
 
-function resolvePrototypeDir() {
-  return process.env.DSS_PROTOTYPE_DIR || process.env.DSS_BLOCK0_PROTOTYPE_DIR || process.env.DSS_BLOCK1_PROTOTYPE_DIR || defaultPrototypeDir;
-}
-
-function runPythonJson(command, payload) {
-  return new Promise((resolve, reject) => {
-    const prototypeDir = resolvePrototypeDir();
-    const runner = path.join(prototypeDir, "block0_intake.py");
-
-    if (!fs.existsSync(runner)) {
-      const error = new Error("DSS Block 0 intake runner was not found.");
-      error.prototype_dir = prototypeDir;
-      reject(error);
-      return;
-    }
-
-    const child = spawn("python3", [runner, command], { cwd: prototypeDir });
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("close", (code) => {
-      if (code !== 0) {
-        const error = new Error(stderr || stdout || `Command exited with code ${code}`);
-        error.code = code;
-        error.stdout = stdout;
-        error.stderr = stderr;
-        error.prototype_dir = prototypeDir;
-        reject(error);
-        return;
-      }
-
-      try {
-        resolve(JSON.parse(stdout || "{}"));
-      } catch (parseError) {
-        parseError.stdout = stdout;
-        parseError.stderr = stderr;
-        parseError.prototype_dir = prototypeDir;
-        reject(parseError);
-      }
-    });
-
-    child.stdin.write(JSON.stringify(payload || {}));
-    child.stdin.end();
-  });
-}
 
 function buildExtractionPrompt(docText, artifactType) {
   const allowed = artifactScopes[artifactType];
@@ -149,23 +97,31 @@ function filterToScope(candidate, artifactType) {
 exports.submitBlock0 = async (req, res) => {
   try {
     const payload = req.body || {};
-    const intakePackage = await runPythonJson("submit", {
-      questionnaire: payload.questionnaire || {},
-      extracted_fields: payload.extracted_fields || {},
+    const serviceUrl = resolveDssServiceUrl();
+
+    const response = await fetch(`${serviceUrl}/v1/block/0`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        questionnaire: payload.questionnaire || {},
+        extracted_fields: payload.extracted_fields || {},
+      }),
     });
 
-    return res.json({
-      success: true,
-      intake_package: intakePackage,
-    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw Object.assign(new Error(data.error || `DSS service responded ${response.status}`), {
+        dss_traceback: data.traceback,
+      });
+    }
+
+    return res.json({ success: true, intake_package: data.intake_package });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "DSS Block 0 intake submission failed.",
       error: error.message,
-      prototype_dir: error.prototype_dir,
-      stderr: error.stderr,
-      stdout: error.stdout,
+      dss_traceback: error.dss_traceback,
     });
   }
 };

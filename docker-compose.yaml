@@ -31,12 +31,9 @@ services:
       - DATABASE_USER=${MONGO_DB_USER}
       - DATABASE_PASSWORD=${MONGO_DB_PASSWORD}
       - DATABASE_AUTH=${MONGO_DB_AUTH}
-      - DSS_BLOCK1_PROTOTYPE_DIR=/opt/dss-workspace/prototype
-      - DSS_BLOCK0_PROTOTYPE_DIR=/opt/dss-workspace/prototype
+      - DSS_SERVICE_URL=${DSS_SERVICE_URL}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL}
-    volumes:
-      - ../dss-prototype:/opt/dss-workspace:ro
     depends_on:
       mongodb:
         condition: service_started
