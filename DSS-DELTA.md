@@ -3,7 +3,7 @@
 Changes and additions made to UnityRI for the AI Governance DSS integration.
 Intended for the engineer who merges this fork back into the upstream repo.
 
-Last updated: 2026-06-10
+Last updated: 2026-06-12
 
 ---
 
@@ -11,8 +11,13 @@ Last updated: 2026-06-10
 
 The DSS (Decision Support System) is a four-block AI governance assessment engine
 built as a separate Python prototype. This delta adds a UnityRI surface for it:
-backend API routes that shell out to the Python engine, and a frontend view that
+backend API routes that call the DSS engine over HTTP, and a frontend view that
 renders results.
+
+The engine runs as a **sealed HTTP service** — UnityRI calls it at `DSS_SERVICE_URL`
+and never embeds, spawns, or co-locates the engine source. No rule logic, scoring,
+or financial-exposure math ships in this repo. This is the boundary required for
+UnityRI to be open-source without exposing the engine as prior art.
 
 All DSS additions are isolated to clearly named files (`dss*`) and a single new
 frontend view. Nothing in the existing helpdesk, assessment, compliance, or
@@ -26,14 +31,15 @@ dashboard flows was modified.
 
 | File | What it does |
 |---|---|
-| `backend/controllers/dssBlock0.controller.js` | Intake form submission and questionnaire extraction |
-| `backend/controllers/dssBlock1.controller.js` | Block 1 (AI inventory) — runs `run_assessment.py`, returns findings + financial exposure |
-| `backend/controllers/dssBlock2.controller.js` | Block 2 (governance policy) — runs `block2_govern.py` |
-| `backend/controllers/dssBlock3.controller.js` | Block 3 (monitoring) — runs `block3_monitor.py`, returns `monitoring_validation_result` |
-| `backend/controllers/dssBlock4.controller.js` | Block 4 (incident response) — runs `block4_respond.py`, returns `ir_validation_result` |
+| `backend/controllers/dssBlock0.controller.js` | Intake form submission (calls DSS service `/v1/block/0`) + questionnaire extraction (Ollama, stays local) |
+| `backend/controllers/dssBlock1.controller.js` | Block 1 (AI inventory) — calls `/v1/block/1`, returns findings + financial exposure |
+| `backend/controllers/dssBlock2.controller.js` | Block 2 (governance policy) — calls `/v1/block/2` |
+| `backend/controllers/dssBlock3.controller.js` | Block 3 (monitoring) — calls `/v1/block/3`, returns `monitoring_validation_result` |
+| `backend/controllers/dssBlock4.controller.js` | Block 4 (incident response) — calls `/v1/block/4`, returns `ir_validation_result` |
 
-All four controllers resolve the DSS prototype directory via `DSS_BLOCK1_PROTOTYPE_DIR`
-env var (falls back to `../DSS Prototype/prototype` relative to the repo root).
+All five controllers call the DSS engine over HTTP at `DSS_SERVICE_URL`
+(falls back to `http://127.0.0.1:5001` for local dev). They use Node's built-in
+`fetch` — no Python, no subprocess, no temp files, no engine source on this side.
 
 ### Backend services
 
@@ -159,17 +165,26 @@ has not diverged before merging.
 The DSS integration requires one additional env var on the server:
 
 ```
-DSS_BLOCK1_PROTOTYPE_DIR=/path/to/DSS Prototype/prototype
+DSS_SERVICE_URL=https://<dss-engine-host>   # the sealed DSS engine service
 ```
 
-If not set, the controllers fall back to `../DSS Prototype/prototype` relative to
-the repo root (works when both repos sit side by side on the same machine or VM).
+If not set, the controllers fall back to `http://127.0.0.1:5001` (works when the
+engine service runs locally for development).
+
+> **Note:** the older `DSS_BLOCK1_PROTOTYPE_DIR` / `DSS_BLOCK0_PROTOTYPE_DIR` vars
+> and the `../dss-prototype` volume mount are gone. UnityRI no longer needs the
+> engine source on disk — only the service URL.
 
 Optional (for LLM narration):
 ```
 OLLAMA_HOST=http://localhost:11434   # or wherever Ollama is running
 GEMINI_API_KEY=...                   # if using Gemini fallback
 ```
+
+> Narration is moving server-side behind the DSS service (`/v1/narrate`). The
+> deterministic correlation layer is wired; the SLM (Ollama) and LLM (Gemini)
+> calls are deferred insertion points. Until they are wired, narration falls back
+> to the deterministic brief.
 
 ---
 
