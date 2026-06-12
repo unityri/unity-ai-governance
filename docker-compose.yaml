@@ -20,21 +20,84 @@ services:
     build:
       context: backend
       target: development
-    network_mode: "host"
+    ports:
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
     env_file:
       - backend/.env
     environment:
-      - HOST=${MONGO_DB_HOST}  # Now 127.0.0.1 refers to the host's loopback interface
+      - HOST=${MONGO_DB_HOST}
       - DB_PORT=${MONGO_DB_PORT}
       - DATABASE_NAME=${MONGO_DB_NAME}
       - DATABASE_USER=${MONGO_DB_USER}
       - DATABASE_PASSWORD=${MONGO_DB_PASSWORD}
       - DATABASE_AUTH=${MONGO_DB_AUTH}
-    expose:
-      - 3000
+      - DSS_BLOCK1_PROTOTYPE_DIR=/opt/dss-workspace/prototype
+      - DSS_BLOCK0_PROTOTYPE_DIR=/opt/dss-workspace/prototype
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    volumes:
+      - ../dss-prototype:/opt/dss-workspace:ro
+    depends_on:
+      mongodb:
+        condition: service_started
+    networks:
+      - react-express
+      - app-network
+
+  mongodb:
+    image: mongo:6
+    restart: always
+    ports:
+      - "${MONGO_DB_PORT}:${MONGO_DB_PORT}"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles:
+      - slm
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - app-network
+
+  ollama-model:
+    image: ollama/ollama:latest
+    profiles:
+      - slm
+    restart: "no"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "until ollama list >/dev/null 2>&1; do
+        echo 'Waiting for local Mistral SLM service...';
+        sleep 3;
+      done;
+      ollama pull $${OLLAMA_MODEL:-mistral}"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - app-network
 
 networks:    
   react-express:  # Ensure this network is defined if needed
     driver: bridge
   app-network:
     driver: bridge
+
+volumes:
+  mongo-data:
+  ollama-data:

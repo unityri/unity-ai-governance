@@ -761,7 +761,12 @@ const AIGovernanceDSS = () => {
                         {block2Results ? "Policies attested" : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
-                        <span style={mutedStyle}>Mode B not built</span>
+                        {block2Results ? (() => {
+                          const d = block2Derived;
+                          const attest = d.vendor_attestation_coverage_pct != null ? `${d.vendor_attestation_coverage_pct}% vendor attestation` : null;
+                          const flow = d.vendor_data_flow_coverage_pct != null ? `${d.vendor_data_flow_coverage_pct}% data flow coverage` : null;
+                          return [attest, flow].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                        })() : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
                         {block2Results ? <ResultBadge result={block2SliceResult} /> : <span style={mutedStyle}>—</span>}
@@ -773,7 +778,12 @@ const AIGovernanceDSS = () => {
                         {block3Results ? "Monitoring attested" : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
-                        <span style={mutedStyle}>Mode B not built</span>
+                        {block3Results ? (() => {
+                          const d = block3Derived;
+                          const age = d.ai_activity_log_age_days != null ? `Last log: ${d.ai_activity_log_age_days}d ago` : null;
+                          const ret = d.log_retention_months != null ? `${d.log_retention_months}-mo retention` : null;
+                          return [age, ret].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                        })() : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
                         {block3Results ? <ResultBadge result={block3SliceResult} /> : <span style={mutedStyle}>—</span>}
@@ -785,7 +795,12 @@ const AIGovernanceDSS = () => {
                         {block4Results ? "Incident response attested" : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
-                        <span style={mutedStyle}>Mode B not built</span>
+                        {block4Results ? (() => {
+                          const d = block4Derived;
+                          const plan = d.ir_plan_age_months != null ? `Plan: ${d.ir_plan_age_months}mo old` : null;
+                          const drill = d.ir_test_age_months != null ? `Last drill: ${d.ir_test_age_months}mo ago` : "Last drill: not recorded";
+                          return [plan, drill].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                        })() : <span style={mutedStyle}>Not run</span>}
                       </td>
                       <td>
                         {block4Results ? <ResultBadge result={block4SliceResult} /> : <span style={mutedStyle}>—</span>}
@@ -900,7 +915,7 @@ const AIGovernanceDSS = () => {
                     resilienceIndex?.gate
                       ? resilienceIndex.gate.replace(/_/g, " ")
                       : resilienceIndex?.method === "weighted_block1_indicators"
-                      ? "FAIR-CAM weighted indicators"
+                      ? "weighted posture indicators"
                       : resilienceIndex?.method || "computed"
                   }
                 />

@@ -3,7 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const OllamaPromptService = require("../services/ollamaPrompt.service");
 
-const defaultPrototypeDir = path.resolve(__dirname, "../../../DSS Prototype/prototype");
+const defaultPrototypeDir = path.resolve(__dirname, "../../../dss-prototype/prototype");
 
 const artifactScopes = {
   aup: {
@@ -46,7 +46,7 @@ const artifactScopes = {
 };
 
 function resolvePrototypeDir() {
-  return process.env.DSS_BLOCK0_PROTOTYPE_DIR || process.env.DSS_BLOCK1_PROTOTYPE_DIR || defaultPrototypeDir;
+  return process.env.DSS_PROTOTYPE_DIR || process.env.DSS_BLOCK0_PROTOTYPE_DIR || process.env.DSS_BLOCK1_PROTOTYPE_DIR || defaultPrototypeDir;
 }
 
 function runPythonJson(command, payload) {

@@ -311,7 +311,12 @@ const AIGovernanceOverview = () => {
                       {block2Results ? "Policies attested" : <span style={mutedStyle}>—</span>}
                     </td>
                     <td>
-                      <span style={mutedStyle}>Mode B — coming in Phase 2</span>
+                      {block2Results ? (() => {
+                        const d = block2Results.derived_fields || {};
+                        const attest = d.vendor_attestation_coverage_pct != null ? `${d.vendor_attestation_coverage_pct}% vendor attestation` : null;
+                        const flow = d.vendor_data_flow_coverage_pct != null ? `${d.vendor_data_flow_coverage_pct}% data flow coverage` : null;
+                        return [attest, flow].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                      })() : <span style={mutedStyle}>—</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <ScoreChip result={block2SliceResult || null} />
@@ -328,7 +333,12 @@ const AIGovernanceOverview = () => {
                       {block3Results ? "Monitoring attested" : <span style={mutedStyle}>—</span>}
                     </td>
                     <td>
-                      <span style={mutedStyle}>Mode B — coming in Phase 2</span>
+                      {block3Results ? (() => {
+                        const d = block3Results.derived_fields || {};
+                        const age = d.ai_activity_log_age_days != null ? `Last log: ${d.ai_activity_log_age_days}d ago` : null;
+                        const ret = d.log_retention_months != null ? `${d.log_retention_months}-mo retention` : null;
+                        return [age, ret].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                      })() : <span style={mutedStyle}>—</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <ScoreChip result={block3SliceResult || null} />
@@ -345,7 +355,12 @@ const AIGovernanceOverview = () => {
                       {block4Results ? "Incident response attested" : <span style={mutedStyle}>—</span>}
                     </td>
                     <td>
-                      <span style={mutedStyle}>Mode B — coming in Phase 2</span>
+                      {block4Results ? (() => {
+                        const d = block4Results.derived_fields || {};
+                        const plan = d.ir_plan_age_months != null ? `Plan: ${d.ir_plan_age_months}mo old` : null;
+                        const drill = d.ir_test_age_months != null ? `Last drill: ${d.ir_test_age_months}mo ago` : "Last drill: not recorded";
+                        return [plan, drill].filter(Boolean).join(", ") || <span style={mutedStyle}>—</span>;
+                      })() : <span style={mutedStyle}>—</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <ScoreChip result={block4SliceResult || null} />

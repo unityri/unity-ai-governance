@@ -1,29 +1,21 @@
 # Base image
-FROM ubuntu:latest AS development
+FROM node:16-bullseye AS development
 
 # Update and install dependencies
-RUN apt update && apt-get update && apt-get install -y \
-    wget \
-    gnupg2 \
-    curl \
+RUN apt-get update && apt-get install -y \
+    chromium \
+    fonts-liberation \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome (for Puppeteer or other headless tasks)
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' && \
-    apt-get update && apt-get install -y google-chrome-stable && \
-    rm -rf /var/lib/apt/lists/*
-
 # Confirm installation
-RUN google-chrome-stable --version
-
-# Install Node.js 16
-RUN curl -sL https://deb.nodesource.com/setup_16.x -o nodesource_setup.sh && \
-    bash nodesource_setup.sh && \
-    apt-get install -y nodejs
+RUN chromium --version
 
 # Set working directory
 WORKDIR /usr/src/app
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Copy package files and install dependencies
 COPY package*.json ./
@@ -33,10 +25,11 @@ RUN npm install
 COPY . .
 
 # Expose application port
-EXPOSE 3306
+EXPOSE 3006
 
 # ✅ Increase Node.js heap memory to 6GB
 ENV NODE_OPTIONS="--max-old-space-size=6144"
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
 
 # Start the app
 CMD ["npm", "start"]
