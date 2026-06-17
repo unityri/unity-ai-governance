@@ -1,27 +1,68 @@
 # DSS Integration Delta
 
 Changes and additions made to UnityRI for the AI Governance DSS integration.
-Intended for the engineer who merges this fork back into the upstream repo.
+Intended for the engineer who wires UnityRI to the DSS engine service.
 
-Last updated: 2026-06-12
+Last updated: 2026-06-17 (v0.5.1)
 
 ---
 
 ## Summary
 
 The DSS (Decision Support System) is a four-block AI governance assessment engine
-built as a separate Python prototype. This delta adds a UnityRI surface for it:
-backend API routes that call the DSS engine over HTTP, and a frontend view that
-renders results.
+running as a **sealed HTTP service** (systemd + Caddy/TLS) at `DSS_SERVICE_URL`.
+UnityRI calls it over HTTP and never embeds, spawns, or co-locates the engine
+source. No rule logic, scoring, CRI, or financial-exposure math ships in this repo.
 
-The engine runs as a **sealed HTTP service** — UnityRI calls it at `DSS_SERVICE_URL`
-and never embeds, spawns, or co-locates the engine source. No rule logic, scoring,
-or financial-exposure math ships in this repo. This is the boundary required for
-UnityRI to be open-source without exposing the engine as prior art.
+**Engine version:** v0.5.1 — 4 blocks, 47 rules (28 core + 19 EU alignment),
+FAIR-lite financial exposure, Resilience Index, EU intake (Block 0), Wazuh Block 3
+adapter, Chatty SARA MCP narration seam. 114 tests passing.
 
 All DSS additions are isolated to clearly named files (`dss*`) and a single new
 frontend view. Nothing in the existing helpdesk, assessment, compliance, or
 dashboard flows was modified.
+
+---
+
+## Engine service contract
+
+Base URL: `DSS_SERVICE_URL` (env var, falls back to `http://127.0.0.1:5001`)
+
+Full contract: `docs/service-api.md` in `dss-prototype` repo.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness + engine version |
+| POST | `/v1/block/0` | Intake — build evidence package from questionnaire (incl. EU alignment section) |
+| POST | `/v1/block/1` | Block 1 — AI inventory verification + financial exposure + resilience feed |
+| POST | `/v1/block/2` | Block 2 — governance & TPRM |
+| POST | `/v1/block/3` | Block 3 — monitoring (Wazuh adapter available) |
+| POST | `/v1/block/4` | Block 4 — incident response |
+| POST | `/v1/assess` | All four blocks → unified resilience feed |
+| POST | `/v1/narrate` | Narration: local SLM digest → Chatty SARA MCP `generate_text` |
+
+### Resilience feed (Block 1 / `/v1/assess`)
+
+Block 1 and `/v1/assess` return a `resilience_feed` object containing everything
+a dashboard needs to render: resilience index + components, indicators,
+control_status, scenario_contexts, decision_outputs, financial_exposure range.
+Rendering is a frontend job — the engine emits the feed, not the chart.
+
+### Audit trail
+
+Every assessment payload includes:
+```json
+{ "input_hash": "sha256:...", "rule_engine_version": "v0.5.1", "assessment_date": "..." }
+```
+This is the hook for Fluree consumer-side writes (Rahul's side).
+
+### EU alignment (Block 0 + EU lens)
+
+Block 0 accepts an optional `eu_alignment` section in the questionnaire. When
+present, `translate_eu_answers()` populates `declared_governance_claims` and the
+EU lens fires across all four blocks (19 EU rules: VAL-SCP, VAL-INV-EU,
+VAL-GOV-EU, VAL-TPRM-EU, VAL-MON-EU, VAL-IR-EU). Non-EU clients are unaffected
+— EU rules gate by omission.
 
 ---
 
@@ -31,30 +72,35 @@ dashboard flows was modified.
 
 | File | What it does |
 |---|---|
-| `backend/controllers/dssBlock0.controller.js` | Intake form submission (calls DSS service `/v1/block/0`) + questionnaire extraction (Ollama, stays local) |
-| `backend/controllers/dssBlock1.controller.js` | Block 1 (AI inventory) — calls `/v1/block/1`, returns findings + financial exposure |
+| `backend/controllers/dssBlock0.controller.js` | Intake form submission (calls `/v1/block/0`) + questionnaire extraction (Ollama, local) |
+| `backend/controllers/dssBlock1.controller.js` | Block 1 (AI inventory) — calls `/v1/block/1`, returns findings + financial exposure + resilience feed |
 | `backend/controllers/dssBlock2.controller.js` | Block 2 (governance policy) — calls `/v1/block/2` |
-| `backend/controllers/dssBlock3.controller.js` | Block 3 (monitoring) — calls `/v1/block/3`, returns `monitoring_validation_result` |
-| `backend/controllers/dssBlock4.controller.js` | Block 4 (incident response) — calls `/v1/block/4`, returns `ir_validation_result` |
+| `backend/controllers/dssBlock3.controller.js` | Block 3 (monitoring) — calls `/v1/block/3` |
+| `backend/controllers/dssBlock4.controller.js` | Block 4 (incident response) — calls `/v1/block/4` |
 
 All five controllers call the DSS engine over HTTP at `DSS_SERVICE_URL`
-(falls back to `http://127.0.0.1:5001` for local dev). They use Node's built-in
-`fetch` — no Python, no subprocess, no temp files, no engine source on this side.
+(falls back to `http://127.0.0.1:5001`). They use Node's built-in `fetch` —
+no Python, no subprocess, no temp files, no engine source in this repo.
 
 ### Backend services
 
 | File | What it does |
 |---|---|
-| `backend/services/dssNarration.service.js` | LLM narration layer — calls Ollama (local) or falls back gracefully |
-| `backend/services/dssGemini.service.js` | Gemini API narration alternative |
+| `backend/services/dssNarration.service.js` | Narration layer — calls `/v1/narrate`, which routes through Chatty SARA MCP `generate_text` (when `DSS_MCP_URL` + `DSS_MCP_JWT` + `DSS_MCP_ORG_ID` set on the engine host) |
 | `backend/services/ollamaPrompt.service.js` | Ollama prompt wrapper used by dssNarration |
+
+**Note on narration:** the engine's `/v1/narrate` endpoint handles the full
+pipeline (local SLM digest → Chatty SARA MCP). UnityRI does not call Gemini or
+any LLM directly for DSS narration — it calls `/v1/narrate` and renders whatever
+`narration.text` contains. If MCP is not yet configured, `narration.text` is null
+and the deterministic brief is rendered instead.
 
 ### Frontend view
 
 | File | What it does |
 |---|---|
 | `frontend/src/views/aiGovernanceDss/index.js` | Main AI Governance page — block runner buttons, Mode A/B gap table, demand signal card, findings, validation rules, financial exposure, narration |
-| `frontend/src/views/aiGovernanceDss/IntakeForm.js` | Block 0 intake form (questionnaire) |
+| `frontend/src/views/aiGovernanceDss/IntakeForm.js` | Block 0 intake form (questionnaire, including EU alignment section) |
 
 ---
 
@@ -62,7 +108,7 @@ All five controllers call the DSS engine over HTTP at `DSS_SERVICE_URL`
 
 ### `backend/routes/v1.js`
 
-Added 8 DSS routes after the existing `ai-description-write` route block:
+Added 10 DSS routes after the existing `ai-description-write` route block:
 
 ```js
 // ** AI Governance DSS
@@ -78,15 +124,6 @@ router.post("/dss/block4/run", Authorization, DSSBlock4Controller.runBlock4);
 router.post("/dss/block4/narrate", Authorization, DSSBlock4Controller.narrateBlock4);
 ```
 
-Block 3 and Block 4 are deliberately **separate** — separate controllers, separate endpoints,
-separate Python engines (`block3_monitor.py` and `block4_respond.py` do not import each other).
-An earlier build had a single merged `/dss/block34` endpoint and a `dssBlock34.controller.js`;
-that was removed. Both blocks read the same client evidence package
-(`fixtures/block34_*_scenario/evidence_package.json` on the DSS Prototype side) because one
-client's evidence covers both monitoring and IR fields — that shared folder name is the only
-remaining `block34` string and does not imply the blocks are merged.
-
-Four `require()` imports were also added at the top of the file for the four controllers.
 No existing routes were changed.
 
 ### `frontend/src/routes.js`
@@ -98,7 +135,7 @@ import AIGovernanceDSS from "views/aiGovernanceDss";
 import IntakeForm from "views/aiGovernanceDss/IntakeForm";
 ```
 
-New route block (added after the Resilience Index section):
+New route block (after Resilience Index section):
 
 ```js
 {
@@ -106,20 +143,16 @@ New route block (added after the Resilience Index section):
   name: "AI Governance",
   mini: "AG",
   state: "AIGovernanceCollapse",
-  icon: "",
-  imgIcon: governanceIcon,
   views: [
-    { path: "/ai-governance-dss", name: "AI Governance", ... component: <AIGovernanceDSS /> },
-    { path: "/ai-governance-intake", name: "AI Governance Intake", ... component: <IntakeForm /> },
+    { path: "/ai-governance-dss", name: "AI Governance", component: <AIGovernanceDSS /> },
+    { path: "/ai-governance-intake", name: "AI Governance Intake", component: <IntakeForm /> },
   ],
 }
 ```
 
-No existing routes were removed or modified.
-
 ### `frontend/src/utility/ApiEndPoints.js`
 
-Added a `dss` key to the `API_ENDPOINTS` export:
+Added a `dss` key to `API_ENDPOINTS`:
 
 ```js
 dss: {
@@ -136,70 +169,53 @@ dss: {
 }
 ```
 
-No existing endpoints were modified.
-
 ### `backend/Dockerfile`
 
-Switched base image from `ubuntu:latest` (with manual Node 16 + Google Chrome install)
-to `node:16-bullseye` with `chromium` package. Also:
-- Sets `PUPPETEER_SKIP_DOWNLOAD=true` and `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`
-- Fixes exposed port from `3306` (MySQL default — likely a typo in original) to `3006`
-
-This is a build environment fix, not DSS-specific. Confirm the upstream Dockerfile
-has not diverged before merging.
+Switched base image from `ubuntu:latest` to `node:16-bullseye` with `chromium`.
+Also sets `PUPPETEER_SKIP_DOWNLOAD=true`, fixes exposed port from `3306` to `3006`.
+Build environment fix — not DSS-specific. Confirm upstream Dockerfile hasn't diverged.
 
 ---
 
 ## Deleted files
 
-| File | Why deleted |
+| File | Why |
 |---|---|
-| `frontend/src/utility/graph.js` | Dead mock data — none of its 6 exports were imported anywhere. Contained real client PII from original commit. Safe to delete. |
+| `frontend/src/utility/graph.js` | Dead mock data — none of its 6 exports were imported anywhere. Contained real client PII. |
 | `backend/helper/helpdeskJson.js` | Contained real helpdesk sample data with PII. Confirm upstream has addressed this. |
-| `.env`, `backend/.env`, `frontend/.env` | Live credentials removed from tracked files. Use `example.env` as template. |
+| `.env`, `backend/.env`, `frontend/.env` | Live credentials removed from tracked files. Use `example.env`. |
 
 ---
 
 ## Environment variables required
 
-The DSS integration requires one additional env var on the server:
-
 ```
-DSS_SERVICE_URL=https://<dss-engine-host>   # the sealed DSS engine service
+DSS_SERVICE_URL=https://<dss-engine-host>   # sealed DSS engine service; falls back to http://127.0.0.1:5001
 ```
 
-If not set, the controllers fall back to `http://127.0.0.1:5001` (works when the
-engine service runs locally for development).
-
-> **Note:** the older `DSS_BLOCK1_PROTOTYPE_DIR` / `DSS_BLOCK0_PROTOTYPE_DIR` vars
-> and the `../dss-prototype` volume mount are gone. UnityRI no longer needs the
-> engine source on disk — only the service URL.
-
-Optional (for LLM narration):
+Narration (set on the **engine host**, not UnityRI):
 ```
-OLLAMA_HOST=http://localhost:11434   # or wherever Ollama is running
-GEMINI_API_KEY=...                   # if using Gemini fallback
+DSS_MCP_URL=<chatty-sara-mcp-endpoint>      # Chatty SARA MCP server (Rahul to provide)
+DSS_MCP_JWT=<service-jwt>                   # service JWT for generate_text entitlement
+DSS_MCP_ORG_ID=<org-id>                     # tenant org_id (/^[a-z0-9-]{3,64}$/)
 ```
 
-> Narration is moving server-side behind the DSS service (`/v1/narrate`). The
-> deterministic correlation layer is wired; the SLM (Ollama) and LLM (Gemini)
-> calls are deferred insertion points. Until they are wired, narration falls back
-> to the deterministic brief.
+When `DSS_MCP_*` vars are not set, `narration.text` is null and the deterministic
+brief is rendered. No change needed in UnityRI — it just renders what the engine
+returns.
 
 ---
 
 ## Naming note: `risk_appetite`
 
-The DSS uses a `risk_appetite` object (passed from the AI Governance view into the Block 1
-financial model via `--risk-appetite`). Its fields are FAIR-lite calibration inputs:
-`organization_size`, `posture_min_multiplier`, `posture_max_multiplier`, `uncertainty_band_pct`,
-`shadow_ai_max`.
+The DSS uses a `risk_appetite` object for FAIR-lite calibration inputs
+(`organization_size`, `posture_min_multiplier`, etc.). This is **not** the same
+as the CSRR / dashboard `risk_appetite` entity in Fluree (board residual-risk
+tolerance: `escalation_threshold`, `max_acceptable_residual_exposure`, etc.).
+They share a name only. The DSS `risk_appetite` does not read from or write to
+Fluree or any CSRR record.
 
-This is **not** the same object as the CSRR / dashboard `risk_appetite` entity in the Fluree
-work (board residual-risk tolerance: `escalation_threshold`, `max_acceptable_residual_exposure`,
-`regulatory_overrides`, etc.). They collide on the name only. The DSS `risk_appetite` does not
-read from or write to Fluree or any CSRR record — it is self-contained to the exposure estimate.
-Flagging so the two are not conflated at merge time.
+---
 
 ## What has not been touched
 
@@ -208,3 +224,4 @@ Flagging so the two are not conflated at merge time.
 - Dashboard, connections, OpenVAS, Wazuh views
 - Auth / user management
 - Any existing API routes
+- `aiPrompt.service.js` (tool description writer — separate from DSS narration)
