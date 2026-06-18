@@ -16,7 +16,8 @@ source. No rule logic, scoring, CRI, or financial-exposure math ships in this re
 
 **Engine version:** v0.5.1 — 4 blocks, 47 rules (28 core + 19 EU alignment),
 FAIR-lite financial exposure, Resilience Index, EU intake (Block 0), Wazuh Block 3
-adapter, Chatty SARA MCP narration seam. 114 tests passing.
+adapter, Chatty SARA MCP narration seam, all 8 evidence slices wired, standalone
+AI-BOM engine (VAL-BOM-001), and tamper-evident signed export. 174 tests passing.
 
 All DSS additions are isolated to clearly named files (`dss*`) and a single new
 frontend view. Nothing in the existing helpdesk, assessment, compliance, or
@@ -39,7 +40,9 @@ Full contract: `docs/service-api.md` in `dss-prototype` repo.
 | POST | `/v1/block/3` | Block 3 — monitoring (Wazuh adapter available) |
 | POST | `/v1/block/4` | Block 4 — incident response |
 | POST | `/v1/assess` | All four blocks → unified resilience feed |
-| POST | `/v1/narrate` | Narration: local SLM digest → Chatty SARA MCP `generate_text` |
+| POST | `/v1/narrate` | Narration: local SLM digest → Chatty SARA MCP `narrate_dss` |
+| POST | `/v1/seal` | Tamper-evident sealed export of an output (canonical SHA-256; HMAC-SHA256 when `DSS_EXPORT_SIGNING_KEY` set) |
+| POST | `/v1/verify-seal` | Verify a sealed output is intact |
 
 ### Resilience feed (Block 1 / `/v1/assess`)
 
@@ -86,7 +89,7 @@ no Python, no subprocess, no temp files, no engine source in this repo.
 
 | File | What it does |
 |---|---|
-| `backend/services/dssNarration.service.js` | Narration layer — calls `/v1/narrate`, which routes through Chatty SARA MCP `generate_text` (when `DSS_MCP_URL` + `DSS_MCP_JWT` + `DSS_MCP_ORG_ID` set on the engine host) |
+| `backend/services/dssNarration.service.js` | Narration layer — calls `/v1/narrate`, which routes through Chatty SARA MCP `narrate_dss` (when `DSS_MCP_URL` + `DSS_MCP_JWT` + `DSS_MCP_ORG_ID` set on the engine host) |
 | `backend/services/ollamaPrompt.service.js` | Ollama prompt wrapper used by dssNarration |
 
 **Note on narration:** the engine's `/v1/narrate` endpoint handles the full
@@ -196,7 +199,7 @@ DSS_SERVICE_URL=https://<dss-engine-host>   # sealed DSS engine service; falls b
 Narration (set on the **engine host**, not UnityRI):
 ```
 DSS_MCP_URL=<chatty-sara-mcp-endpoint>      # Chatty SARA MCP server (Rahul to provide)
-DSS_MCP_JWT=<service-jwt>                   # service JWT for generate_text entitlement
+DSS_MCP_JWT=<service-jwt>                   # service JWT for narrate_dss entitlement
 DSS_MCP_ORG_ID=<org-id>                     # tenant org_id (/^[a-z0-9-]{3,64}$/)
 ```
 
