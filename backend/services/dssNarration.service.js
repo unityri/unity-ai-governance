@@ -1,3 +1,4 @@
+var axios = require("axios");
 var DssGeminiService = require("./dssGemini.service");
 var OllamaPromptService = require("./ollamaPrompt.service");
 var { aiServiceTypes, getAIIntegrationCredentials } = require("../helper");
@@ -62,7 +63,7 @@ Task:
 
 Return strict JSON only:
 {
-  "llm_prompt": "Prompt for Gemini",
+  "llm_prompt": "Prompt for narrator",
   "surfaced_items": [
     { "type": "validation|indicator|scenario|finding|evidence|defensibility|financial", "id": "string", "reason": "string" }
   ],
@@ -144,10 +145,19 @@ async function prepareWithLocalSlm(block1Output = {}) {
 }
 
 async function applyMcpBoundary(slmHandoff = {}) {
-  // Future insertion point: MCP policy gateway / redaction / approval tools.
-  // Current phase is synthetic data only, so this is a read-only pass-through.
+  // MCP policy gateway / redaction seam.
+  // When DSS_MCP_URL + DSS_MCP_JWT + DSS_MCP_ORG_ID are set, narration routes
+  // through Chatty SARA's narrate_dss MCP tool (provider-agnostic, no LLM key
+  // in this service). When not configured, falls back to the Gemini driver.
+  const mcpConfigured = !!(
+    process.env.DSS_MCP_URL &&
+    process.env.DSS_MCP_JWT &&
+    process.env.DSS_MCP_ORG_ID
+  );
+
   return {
-    stage: "mcp_deferred_passthrough",
+    stage: mcpConfigured ? "mcp_ready" : "mcp_not_configured",
+    mcp_configured: mcpConfigured,
     prompt_for_llm: slmHandoff.llm_prompt,
     local_context: slmHandoff.local_context,
     surfaced_items: slmHandoff.surfaced_items,
@@ -160,6 +170,27 @@ function attachLocalContext(narrationText = "", boundaryPayload = {}) {
     reattached_local_context: boundaryPayload.local_context || {},
     surfaced_items: boundaryPayload.surfaced_items || [],
   };
+}
+
+async function narrateWithMcp(boundaryPayload = {}) {
+  const response = await axios.post(
+    `${process.env.DSS_MCP_URL}/tools/narrate_dss`,
+    {
+      prompt: boundaryPayload.prompt_for_llm,
+      org_id: process.env.DSS_MCP_ORG_ID,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.DSS_MCP_JWT}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 30000,
+    }
+  );
+
+  const text = response.data?.result || response.data?.text || "";
+  if (!text) throw new Error("narrate_dss MCP returned no narration text.");
+  return text;
 }
 
 async function narrateWithGemini(boundaryPayload = {}) {
@@ -181,7 +212,20 @@ async function narrateWithGemini(boundaryPayload = {}) {
 exports.narrateBlock1Output = async function (block1Output = {}) {
   const slmHandoff = await prepareWithLocalSlm(block1Output);
   const boundaryPayload = await applyMcpBoundary(slmHandoff);
-  const narrationText = await narrateWithGemini(boundaryPayload);
+
+  let narrationText;
+  let llmProvider;
+  let llmModel;
+
+  if (boundaryPayload.mcp_configured) {
+    narrationText = await narrateWithMcp(boundaryPayload);
+    llmProvider = "chatty_sara_mcp";
+    llmModel = "narrate_dss";
+  } else {
+    narrationText = await narrateWithGemini(boundaryPayload);
+    llmProvider = aiServiceTypes.gemini;
+    llmModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  }
 
   return {
     pipeline: {
@@ -192,11 +236,11 @@ exports.narrateBlock1Output = async function (block1Output = {}) {
       },
       boundary: {
         type: boundaryPayload.stage,
-        mcp_enabled: false,
+        mcp_enabled: boundaryPayload.mcp_configured,
       },
       llm: {
-        provider: aiServiceTypes.gemini,
-        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+        provider: llmProvider,
+        model: llmModel,
         role: "plain_language_narration",
       },
       read_only: true,

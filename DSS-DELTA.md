@@ -3,7 +3,7 @@
 Changes and additions made to UnityRI for the AI Governance DSS integration.
 Intended for the engineer who wires UnityRI to the DSS engine service.
 
-Last updated: 2026-06-17 (v0.5.1)
+Last updated: 2026-06-18 (v0.5.2)
 
 ---
 
@@ -14,10 +14,12 @@ running as a **sealed HTTP service** (systemd + Caddy/TLS) at `DSS_SERVICE_URL`.
 UnityRI calls it over HTTP and never embeds, spawns, or co-locates the engine
 source. No rule logic, scoring, CRI, or financial-exposure math ships in this repo.
 
-**Engine version:** v0.5.1 — 4 blocks, 47 rules (28 core + 19 EU alignment),
-FAIR-lite financial exposure, Resilience Index, EU intake (Block 0), Wazuh Block 3
-adapter, Chatty SARA MCP narration seam, all 8 evidence slices wired, standalone
-AI-BOM engine (VAL-BOM-001), and tamper-evident signed export. 174 tests passing.
+**Engine version:** v0.5.2 — 4 blocks, 47 rules (28 core + 19 EU alignment),
+FAIR-lite financial exposure, pluggable risk quantification views including
+Monte Carlo Plus / Risk Plus OpVaR, Resilience Index, EU intake (Block 0), Wazuh
+Block 3 adapter, Chatty SARA MCP narration seam, all 8 evidence slices wired,
+standalone AI-BOM engine (VAL-BOM-001), and tamper-evident signed export. 195
+tests passing.
 
 All DSS additions are isolated to clearly named files (`dss*`) and a single new
 frontend view. Nothing in the existing helpdesk, assessment, compliance, or
@@ -40,6 +42,7 @@ Full contract: `docs/service-api.md` in `dss-prototype` repo.
 | POST | `/v1/block/3` | Block 3 — monitoring (Wazuh adapter available) |
 | POST | `/v1/block/4` | Block 4 — incident response |
 | POST | `/v1/assess` | All four blocks → unified resilience feed |
+| GET | `/v1/risk-models` | List available risk-quantification model views |
 | POST | `/v1/narrate` | Narration: local SLM digest → Chatty SARA MCP `narrate_dss` |
 | POST | `/v1/seal` | Tamper-evident sealed export of an output (canonical SHA-256; HMAC-SHA256 when `DSS_EXPORT_SIGNING_KEY` set) |
 | POST | `/v1/verify-seal` | Verify a sealed output is intact |
@@ -48,8 +51,55 @@ Full contract: `docs/service-api.md` in `dss-prototype` repo.
 
 Block 1 and `/v1/assess` return a `resilience_feed` object containing everything
 a dashboard needs to render: resilience index + components, indicators,
-control_status, scenario_contexts, decision_outputs, financial_exposure range.
-Rendering is a frontend job — the engine emits the feed, not the chart.
+control_status, scenario_contexts, decision_outputs, and a selected/default
+`financial_exposure` view. `/v1/assess` also returns
+`risk_quantification.models`, a backend-owned comparison object for methodology
+views such as FAIR-lite and Monte Carlo Plus OpVaR. Rendering is a frontend job
+— the engine emits the feed, not the chart.
+
+`financial_exposure` remains the compatibility field. New UI should prefer
+`risk_quantification.models` when showing methodology choice or comparison.
+Do not present FAIR-lite and OpVaR as interchangeable calculations.
+
+Example `/v1/assess` request:
+
+```json
+{
+  "package": { "...": "..." },
+  "risk_model": "fair_lite",
+  "risk_models": ["fair_lite", "monte_carlo_plus"],
+  "risk_appetite": {
+    "organization_size": "mid_market",
+    "inputs": [
+      {
+        "name": "Shadow AI data loss",
+        "likelihood": 0.05,
+        "typicalImpact": 10000,
+        "extremeImpact": 100000
+      }
+    ],
+    "confidence_level": 0.995,
+    "extreme_impact_percentile": 0.95
+  }
+}
+```
+
+Example feed shape:
+
+```json
+{
+  "financial_exposure": { "...": "selected/default view" },
+  "risk_quantification": {
+    "default_model": "fair_lite",
+    "requested_model": "fair_lite",
+    "selected_model": "fair_lite",
+    "models": {
+      "fair_lite": { "risk_model": "fair_lite", "estimated_annual_loss_exposure": { "...": "..." } },
+      "monte_carlo_plus": { "risk_model": "monte_carlo_plus", "status": "not_configured" }
+    }
+  }
+}
+```
 
 ### Audit trail
 
@@ -211,12 +261,14 @@ returns.
 
 ## Naming note: `risk_appetite`
 
-The DSS uses a `risk_appetite` object for FAIR-lite calibration inputs
-(`organization_size`, `posture_min_multiplier`, etc.). This is **not** the same
-as the CSRR / dashboard `risk_appetite` entity in Fluree (board residual-risk
-tolerance: `escalation_threshold`, `max_acceptable_residual_exposure`, etc.).
-They share a name only. The DSS `risk_appetite` does not read from or write to
-Fluree or any CSRR record.
+The DSS uses a `risk_appetite` object for quantification inputs. FAIR-lite uses
+calibration fields such as `organization_size`, `posture_min_multiplier`, and
+`uncertainty_band_pct`. Monte Carlo Plus uses `inputs` / `scenarios` with
+Risk Plus fields: `name`, `likelihood`, `typicalImpact`, and `extremeImpact`.
+This is **not** the same as the CSRR / dashboard `risk_appetite` entity in
+Fluree (board residual-risk tolerance: `escalation_threshold`,
+`max_acceptable_residual_exposure`, etc.). They share a name only. The DSS
+`risk_appetite` does not read from or write to Fluree or any CSRR record.
 
 ---
 
